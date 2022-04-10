@@ -19,6 +19,7 @@ import android.widget.Toast
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.databinding.DataBindingUtil
 import com.patrick0422.cameraxapp.databinding.ActivityMainBinding
+import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -111,6 +112,14 @@ class MainActivity : AppCompatActivity() {
 
                 imageCapture = ImageCapture.Builder().build()
 
+                val imageAnalyzer = ImageAnalysis.Builder()
+                    .build()
+                    .also {
+                        it.setAnalyzer(cameraExecutor, LuminosityAnalyzer { luma ->
+                            Log.d(TAG, "Average luminosity: $luma")
+                        })
+                    }
+
                 // 후면 카메라를 기본으로 선택
                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
@@ -118,7 +127,7 @@ class MainActivity : AppCompatActivity() {
                     // cameraProvider와 연결된 모든 것을 끊음
                     cameraProvider.unbindAll()
                     // 현재 액티비티의 생명주기에 동기화
-                    cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
+                    cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture, imageAnalyzer)
                 } catch (e: Exception) {
                     Log.e(TAG, "Use case binding failed", e)
                 }
@@ -166,5 +175,27 @@ class MainActivity : AppCompatActivity() {
                     add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                 }
             }.toTypedArray()
+    }
+
+    private class LuminosityAnalyzer(private val listener: LumaListener) : ImageAnalysis.Analyzer {
+
+        private fun ByteBuffer.toByteArray(): ByteArray {
+            rewind()    // Rewind the buffer to zero
+            val data = ByteArray(remaining())
+            get(data)   // Copy the buffer into a byte array
+            return data // Return the byte array
+        }
+
+        override fun analyze(image: ImageProxy) {
+
+            val buffer = image.planes[0].buffer
+            val data = buffer.toByteArray()
+            val pixels = data.map { it.toInt() and 0xFF }
+            val luma = pixels.average()
+
+            listener(luma)
+
+            image.close()
+        }
     }
 }
